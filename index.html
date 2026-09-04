@@ -3,214 +3,226 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>태블릿 최적화 액션 RPG</title>
+    <title>웹 미니 마인크래프트</title>
     <style>
-        * { box-sizing: border-box; -webkit-touch-callout: none; -webkit-user-select: none; }
-        body {
-            margin: 0; padding: 15px;
-            background-color: #1a1a24;
-            color: #ffffff;
-            font-family: 'Malgun Gothic', sans-serif;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            min-height: 100vh;
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        
+        /* 터치 UI 컨트롤러 */
+        #ui-container {
+            position: absolute; bottom: 20px; left: 0; right: 0;
+            display: flex; justify-content: space-between; padding: 0 30px;
+            pointer-events: none;
         }
-        .game-screen {
-            width: 100%; max-width: 600px;
-            background: #252538;
-            border: 3px solid #4e4e70; border-radius: 15px;
-            padding: 20px; text-align: center;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        .btn {
+            width: 70px; height: 70px; background: rgba(255,255,255,0.3);
+            border: 3px solid #fff; border-radius: 50%; color: white;
+            font-size: 14px; font-weight: bold; display: flex;
+            align-items: center; justify-content: center; pointer-events: auto;
+            -webkit-user-select: none; user-select: none;
         }
-        .battle-arena {
-            display: flex; justify-content: space-around; align-items: center;
-            background: #14141f; height: 180px; border-radius: 10px; margin: 15px 0; padding: 10px;
+        .btn:active { background: rgba(255,255,255,0.6); }
+        
+        #crosshair {
+            position: absolute; top: 50%; left: 50%;
+            width: 10px; height: 10px; transform: translate(-50%, -50%);
+            pointer-events: none; color: white; font-size: 20px;
+            display: flex; align-items: center; justify-content: center;
         }
-        .character-box { width: 45%; text-align: center; }
-        .avatar { font-size: 50px; margin-bottom: 5px; animation: bounce 1s infinite alternate; }
-        @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-10px); } }
-        .hp-bar-container { background: #444; width: 100%; height: 12px; border-radius: 6px; overflow: hidden; margin-top: 5px; }
-        .hp-bar { background: #ff4757; height: 100%; width: 100%; transition: width 0.3s ease; }
-        .enemy-hp { background: #ffa502; }
-        .log-display {
-            background: #0f0f14; border-radius: 8px; height: 100px; padding: 10px;
-            font-size: 14px; color: #2ed573; text-align: left; overflow-y: auto; margin-bottom: 15px;
+        
+        #mode-indicator {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.6); color: white; padding: 8px 16px;
+            border-radius: 20px; font-size: 14px; pointer-events: none;
         }
-        .control-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        button {
-            background: #3b3b54; border: 2px solid #5d5d81; color: white;
-            padding: 15px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer;
-            outline: none; -webkit-tap-highlight-color: transparent;
-        }
-        button:active { background: #5d5d81; }
-        .btn-attack { background: #ff4757; border-color: #ff6b81; }
-        .btn-attack:active { background: #ff6b81; }
     </style>
+    <!-- 3D 그래픽 처리를 위한 Three.js 라이브러리 로드 -->
+    <script src="https://cloudflare.com"></script>
 </head>
 <body>
 
-<div class="game-screen">
-    <h3 style="margin-top:0; color:#eccc68;">⚔️ 태블릿 터치 비주얼 RPG 🛡️</h3>
-    
-    <div style="font-size: 14px; color: #a4b0be;">
-        레벨: <span id="txtLvl">1</span> | 공격력: <span id="txtAtk">12</span> | 골드: <span id="txtGold">0</span>G
-    </div>
+<div id="crosshair">+</div>
+<div id="mode-indicator">🛠️ 모드: 블록 설치하기</div>
 
-    <!-- 배틀 아레나 (비주얼 화면) -->
-    <div class="battle-arena">
-        <div class="character-box">
-            <div class="avatar">🧙‍♂️</div>
-            <div style="font-size:12px;">플레이어 (Lv.<span id="pLvl">1</span>)</div>
-            <div class="hp-bar-container"><div id="pHpBar" class="hp-bar"></div></div>
-        </div>
-        <div style="font-size: 24px; color:#ff4757; font-weight:bold;">VS</div>
-        <div class="character-box">
-            <div id="mAvatar" class="avatar">🦎</div>
-            <div id="mName" style="font-size:12px; font-weight:bold;">야생 슬라임</div>
-            <div class="hp-bar-container"><div id="mHpBar" class="hp-bar enemy-hp"></div></div>
-        </div>
-    </div>
-
-    <!-- 배틀 로그 -->
-    <div id="logBox" class="log-display">[시스템] 모험을 시작할 준비가 되었습니다.</div>
-
-    <!-- 터치 패드 컨트롤 -->
-    <div class="control-panel">
-        <button class="btn-attack" onclick="doAction('attack')">⚔️ 일반 공격</button>
-        <button onclick="doAction('skill')">🔥 마법 스킬</button>
-        <button onclick="doAction('heal')">❤️ 휴식/치료 (10G)</button>
-        <button onclick="doAction('upgrade')">🛒 장비 강화 (40G)</button>
-    </div>
+<div id="ui-container">
+    <div class="btn" id="btn-mode">🧱 모드<br>변경</div>
+    <div class="btn" id="btn-action">🔨 작동</div>
 </div>
 
 <script>
-    // 모든 화면 요소가 준비된 후 실행되도록 보장
-    window.onload = function() {
-        let p = { lvl: 1, hp: 100, maxHp: 100, atk: 12, gold: 0, score: 0 };
-        let m = { name: "초록 슬라임", avatar: "🟢", hp: 30, maxHp: 30, atk: 5, gold: 15 };
+    let scene, camera, renderer;
+    let blocks = [];
+    let isBreakMode = false; // false = 설치, true = 파괴
+    
+    // 시점 제어 변수 (태블릿 드래그용)
+    let isDragging = false;
+    let previousMousePosition = { x: 0, y: 0 };
+    let cameraRotation = { x: 0, y: 0 };
 
-        const monsterDatabase = [
-            { name: "초록 슬라임", avatar: "🟢", hp: 30, atk: 5, gold: 15 },
-            { name: "화난 고블린", avatar: "👺", hp: 55, atk: 10, gold: 30 },
-            { name: "심해 크라켄", avatar: "🦑", hp: 90, atk: 18, gold: 55 },
-            { name: "지옥 화염룡", avatar: "🐉", hp: 220, atk: 28, gold: 150 }
-        ];
+    init();
+    animate();
 
-        const logBox = document.getElementById("logBox");
+    function init() {
+        // 1. 3D 공간(Scene) 생성
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); // 하늘색 배경
 
-        function addLog(msg, color="#2ed573") {
-            logBox.innerHTML += `<br><span style="color:${color};">${msg}</span>`;
-            logBox.scrollTop = logBox.scrollHeight;
-        }
+        // 2. 카메라 설정
+        camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(5, 8, 15);
+        camera.lookAt(0, 0, 0);
 
-        function refreshUi() {
-            document.getElementById("txtLvl").innerText = p.lvl;
-            document.getElementById("pLvl").innerText = p.lvl;
-            document.getElementById("txtAtk").innerText = p.atk;
-            document.getElementById("txtGold").innerText = p.gold;
-            
-            // 체력 바 비율 업데이트
-            document.getElementById("pHpBar").style.width = (p.hp / p.maxHp * 100) + "%";
-            document.getElementById("mHpBar").style.width = (m.hp / m.maxHp * 100) + "%";
+        // 3. 렌더러 생성
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
 
-            // 몬스터 정보 출력
-            document.getElementById("mName").innerText = m.name;
-            document.getElementById("mAvatar").innerText = m.avatar;
-        }
+        // 4. 조명 추가
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        directionalLight.position.set(10, 20, 15);
+        scene.add(directionalLight);
 
-        function nextMonster() {
-            let idx = Math.floor(Math.random() * 3);
-            if (p.lvl >= 4 && Math.random() > 0.5) idx = 3; // 레벨 높으면 용 등장
-            
-            let template = monsterDatabase[idx];
-            m.name = template.name;
-            m.avatar = template.avatar;
-            m.maxHp = template.hp + (p.lvl * 5);
-            m.hp = m.maxHp;
-            m.atk = template.atk + (p.lvl * 2);
-            m.gold = template.gold;
+        // 5. 기본 땅(평지) 생성 (그린 블록 배치)
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
+        const material = new THREE.MeshLambertMaterial({ color: 0x557a2b }); // 마크 잔디색
 
-            addLog(`📢 새로운 적 [${m.name}]이(가) 나타났습니다!`, "#eccc68");
-        }
-
-        window.doAction = function(type) {
-            if (p.hp <= 0 && type !== 'heal') {
-                addLog("💀 행동 불능 상태입니다! 치료를 먼저 하세요.", "#ff4757");
-                return;
-            }
-
-            if (type === 'attack') {
-                let damage = p.atk + Math.floor(Math.random() * 5);
-                m.hp -= damage;
-                addLog(`⚔️ 당신의 공격! [${m.name}]에게 ${damage} 데미지!`);
-                enemyTurn();
-            } 
-            else if (type === 'skill') {
-                let damage = Math.floor(p.atk * 1.6);
-                m.hp -= damage;
-                addLog(`🔥 마법 작렬! [${m.name}]에게 ${damage}의 광역 데미지!`, "#ff7f50");
-                enemyTurn();
-            } 
-            else if (type === 'heal') {
-                if (p.gold >= 10 || p.hp <= 0) {
-                    if (p.hp <= 0) {
-                        p.hp = 30; // 돈 없어도 최소 부활 구제
-                        addLog("❤️ 무료 응급 처치로 체력을 30 회복했습니다.", "#70a1ff");
-                    } else {
-                        p.gold -= 10;
-                        p.hp = p.maxHp;
-                        addLog("💤 여관에서 휴식하여 모든 체력을 회복했습니다! (-10G)", "#70a1ff");
-                    }
-                } else {
-                    addLog("❌ 골드가 부족하여 휴식할 수 없습니다.", "#ff4757");
-                }
-            } 
-            else if (type === 'upgrade') {
-                if (p.gold >= 40) {
-                    p.gold -= 40;
-                    p.atk += 6;
-                    addLog("🛒 무기 강화 성공! 공격력이 +6 증가합니다.", "#ffa502");
-                } else {
-                    addLog("❌ 골드가 부족합니다. (필요: 40G)", "#ff4757");
-                }
-            }
-
-            // 몬스터 처치 판정
-            if (m.hp <= 0) {
-                m.hp = 0;
-                p.gold += m.gold;
-                addLog(`🏆 승리! [${m.name}]을 무찌르고 ${m.gold}G를 얻었습니다!`, "#2ed573");
+        for (let x = -5; x <= 5; x++) {
+            for (let z = -5; z <= 5; z++) {
+                const block = new THREE.Mesh(geometry, material);
+                block.position.set(x, 0, z);
                 
-                // 레벨업 시스템
-                if (Math.random() > 0.4) {
-                    p.lvl++;
-                    p.maxHp += 15;
-                    p.hp = p.maxHp;
-                    p.atk += 3;
-                    addLog(`✨ LEVEL UP! 레벨이 ${p.lvl}(으)로 올랐습니다.`, "#eccc68");
-                }
+                // 블록 테두리 선 추가
+                const edges = new THREE.EdgesGeometry(geometry);
+                const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x334e1c }));
+                block.add(line);
+
+                scene.add(block);
+                blocks.push(block);
+            }
+        }
+
+        // 6. 태블릿/모바일 터치 시점 제어 이벤트 리스너
+        window.addEventListener('touchstart', (e) => {
+            if(e.target.classList.contains('btn')) return; // 버튼 누를 땐 시점 고정
+            isDragging = true;
+            previousMousePosition = {
+                x: e.touches[0].clientX,
+                y: e.touches[0].clientY
+            };
+        }, { passive: true });
+
+        window.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            const deltaMove = {
+                x: e.touches[0].clientX - previousMousePosition.x,
+                y: e.touches[0].clientY - previousMousePosition.y
+            };
+
+            cameraRotation.y -= deltaMove.x * 0.005;
+            cameraRotation.x -= deltaMove.y * 0.005;
+            cameraRotation.x = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, cameraRotation.x)); // 위아래 제한
+
+            camera.quaternion.setFromEuler(new THREE.Euler(cameraRotation.x, cameraRotation.y, 0, 'YXZ'));
+
+            previousMousePosition = {
+                x: e.touches[0].clientX,
+                y: e.touches[0].clientY
+            };
+        }, { passive: true });
+
+        window.addEventListener('touchend', () => { isDragging = false; });
+
+        // 7. UI 버튼 기능 작동 정의
+        const modeBtn = document.getElementById('btn-mode');
+        const actionBtn = document.getElementById('btn-action');
+        const indicator = document.getElementById('mode-indicator');
+
+        // 모드 변경 버튼 터치 (설치 <-> 부수기)
+        modeBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isBreakMode = !isBreakMode;
+            if (isBreakMode) {
+                indicator.innerText = "❌ 모드: 블록 부수기";
+                actionBtn.innerText = "💥 파괴";
+            } else {
+                indicator.innerText = "🛠️ 모드: 블록 설치하기";
+                actionBtn.innerText = "🔨 설치";
+            }
+        });
+
+        // 설치/파괴 액션 실행 버튼 터치
+        actionBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            executeBlockAction();
+        });
+
+        // 화면 크기 조정 처리
+        window.addEventListener('resize', onWindowResize, false);
+    }
+
+    // 화면 정중앙의 크로스헤어가 가리키는 블록 감지 및 액션 처리
+    function executeBlockAction() {
+        const raycaster = new THREE.Raycaster();
+        // 화면 정중앙 좌표 (0,0) 설정
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+        
+        const intersects = raycaster.intersectObjects(blocks);
+
+        if (intersects.length > 0) {
+            const intersect = intersects[0];
+
+            if (isBreakMode) {
+                // 블록 부수기 모드
+                if (intersect.object.position.y === 0) return; // 기본 바닥은 안 부서지게 보호
+                scene.remove(intersect.object);
+                blocks = blocks.filter(b => b !== intersect.object);
+            } else {
+                // 블록 설치하기 모드 (바라보는 면의 방향 벡터를 이용해 옆에 생성)
+                const position = new THREE.Vector3()
+                    .copy(intersect.point)
+                    .add(intersect.face.normal)
+                    .floor()
+                    .addScalar(0.5); // 격자 중앙 정렬
+
+                // 설치하려는 자리에 이미 블록이 있는지 확인
+                const blockExists = blocks.some(b => b.position.distanceTo(position) < 0.1);
+                if (blockExists) return;
+
+                const geometry = new THREE.BoxGeometry(1, 1, 1);
+                // 설치하는 블록은 갈색 무늬로 다르게 지정
+                const material = new THREE.MeshLambertMaterial({ color: 0xd2b48c }); 
+                const newBlock = new THREE.Mesh(geometry, material);
                 
-                nextMonster();
-            }
+                // 블록 좌표를 격자에 딱 맞게 보정 유도 (0.5 단위 맵 구조)
+                newBlock.position.set(
+                    Math.round(intersect.object.position.x + intersect.face.normal.x),
+                    Math.round(intersect.object.position.y + intersect.face.normal.y),
+                    Math.round(intersect.object.position.z + intersect.face.normal.z)
+                );
 
-            refreshUi();
-        }
+                const edges = new THREE.EdgesGeometry(geometry);
+                const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x8b5a2b }));
+                newBlock.add(line);
 
-        function enemyTurn() {
-            if (m.hp <= 0) return;
-
-            let mDamage = m.atk + Math.floor(Math.random() * 3);
-            p.hp -= mDamage;
-            addLog(`🩸 [${m.name}]의 반격! ${mDamage}의 데미지를 입었습니다.`, "#ff4757");
-
-            if (p.hp <= 0) {
-                p.hp = 0;
-                addLog("💀 쓰러졌습니다! 하단의 휴식 버튼을 눌러 치료(부활)하세요.", "#ff6b81");
+                scene.add(newBlock);
+                blocks.push(newBlock);
             }
         }
+    }
 
-        // 초기화 가동
-        refreshUi();
-    };
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // 매 프레임 화면을 다시 그리는 루프
+    function animate() {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+    }
 </script>
 
 </body>
