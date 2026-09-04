@@ -2,227 +2,203 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>웹 미니 마인크래프트</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>모바일 미니 2D 마크</title>
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
-        canvas { display: block; width: 100vw; height: 100vh; }
-        
-        /* 터치 UI 컨트롤러 */
-        #ui-container {
-            position: absolute; bottom: 20px; left: 0; right: 0;
-            display: flex; justify-content: space-between; padding: 0 30px;
-            pointer-events: none;
+        /* 모바일 화면 맞춤 및 스크롤 방지 */
+        * { box-sizing: border-box; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+        body {
+            margin: 0; padding: 0; overflow: hidden;
+            background-color: #74b9ff; /* 하늘색 배경 */
+            font-family: 'Malgun Gothic', sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+            height: 100vh; width: 100vw;
         }
-        .btn {
-            width: 70px; height: 70px; background: rgba(255,255,255,0.3);
-            border: 3px solid #fff; border-radius: 50%; color: white;
-            font-size: 14px; font-weight: bold; display: flex;
-            align-items: center; justify-content: center; pointer-events: auto;
-            -webkit-user-select: none; user-select: none;
+        #ui-top {
+            width: 100%; max-width: 500px; padding: 10px;
+            display: flex; justify-content: space-between; align-items: center;
+            background: rgba(0, 0, 0, 0.4); color: white; font-weight: bold; font-size: 14px;
         }
-        .btn:active { background: rgba(255,255,255,0.6); }
-        
-        #crosshair {
-            position: absolute; top: 50%; left: 50%;
-            width: 10px; height: 10px; transform: translate(-50%, -50%);
-            pointer-events: none; color: white; font-size: 20px;
-            display: flex; align-items: center; justify-content: center;
+        canvas {
+            background-color: #74b9ff;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            display: block;
         }
-        
-        #mode-indicator {
-            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.6); color: white; padding: 8px 16px;
-            border-radius: 20px; font-size: 14px; pointer-events: none;
+        /* 하단 모바일 전용 터치 패널 */
+        #control-panel {
+            width: 100%; max-width: 500px; padding: 15px;
+            display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+            background: #2d3436; position: fixed; bottom: 0;
         }
+        button {
+            padding: 18px; font-size: 16px; font-weight: bold; color: white;
+            border: none; border-radius: 8px; cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .btn-mode { background-color: #0984e3; }
+        .btn-mode.break { background-color: #d63031; }
+        .btn-block { background-color: #2ed573; }
     </style>
-    <!-- 3D 그래픽 처리를 위한 Three.js 라이브러리 로드 -->
-    <script src="https://cloudflare.com"></script>
 </head>
 <body>
 
-<div id="crosshair">+</div>
-<div id="mode-indicator">🛠️ 모드: 블록 설치하기</div>
+<div id="ui-top">
+    <div>⛏️ 모바일 2D 크래프트</div>
+    <div id="status-mode">모드: 🧱 블록 설치</div>
+    <div id="status-block">선택: 🌱 잔디 블록</div>
+</div>
 
-<div id="ui-container">
-    <div class="btn" id="btn-mode">🧱 모드<br>변경</div>
-    <div class="btn" id="btn-action">🔨 작동</div>
+<!-- 게임 화면 영역 -->
+<canvas id="craftCanvas"></canvas>
+
+<!-- 모바일 전용 조작 버튼 -->
+<div id="control-panel">
+    <button id="btnMode" class="btn-mode" onclick="toggleMode()">🛠️ 모드 변경</button>
+    <button id="btnBlock" class="btn-block" onclick="changeBlockType()">📦 블록 종류</button>
 </div>
 
 <script>
-    let scene, camera, renderer;
-    let blocks = [];
-    let isBreakMode = false; // false = 설치, true = 파괴
-    
-    // 시점 제어 변수 (태블릿 드래그용)
-    let isDragging = false;
-    let previousMousePosition = { x: 0, y: 0 };
-    let cameraRotation = { x: 0, y: 0 };
+    const canvas = document.getElementById("craftCanvas");
+    const ctx = canvas.getContext("2d");
 
-    init();
-    animate();
+    // 모바일 해상도 유연 대응 설정
+    const blockSize = 40; // 블록 1칸 크기 (40x40 픽셀)
+    let gridCols, gridRows;
 
-    function init() {
-        // 1. 3D 공간(Scene) 생성
-        scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB); // 하늘색 배경
+    let isBreakMode = false; // false = 설치, true = 부수기
+    let currentBlockType = 1; // 1: 잔디, 2: 돌, 3: 나무, 4: 벽돌
+    let worldMap = {}; // 블록 저장 공간 (Key: "x,y")
 
-        // 2. 카메라 설정
-        camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(5, 8, 15);
-        camera.lookAt(0, 0, 0);
+    const blockColors = {
+        1: "#2ed573", // 잔디 (초록)
+        2: "#747d8c", // 돌 (회색)
+        3: "#ffa502", // 나무 (황토)
+        4: "#ff4757"  // 벽돌 (빨강)
+    };
 
-        // 3. 렌더러 생성
-        renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+    const blockNames = {
+        1: "🌱 잔디 블록",
+        2: "🪨 돌 블록",
+        3: "🪵 나무 블록",
+        4: "🧱 벽돌 블록"
+    };
 
-        // 4. 조명 추가
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-        scene.add(ambientLight);
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
-        directionalLight.position.set(10, 20, 15);
-        scene.add(directionalLight);
-
-        // 5. 기본 땅(평지) 생성 (그린 블록 배치)
-        const geometry = new THREE.BoxGeometry(1, 1, 1);
-        const material = new THREE.MeshLambertMaterial({ color: 0x557a2b }); // 마크 잔디색
-
-        for (let x = -5; x <= 5; x++) {
-            for (let z = -5; z <= 5; z++) {
-                const block = new THREE.Mesh(geometry, material);
-                block.position.set(x, 0, z);
-                
-                // 블록 테두리 선 추가
-                const edges = new THREE.EdgesGeometry(geometry);
-                const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x334e1c }));
-                block.add(line);
-
-                scene.add(block);
-                blocks.push(block);
-            }
-        }
-
-        // 6. 태블릿/모바일 터치 시점 제어 이벤트 리스너
-        window.addEventListener('touchstart', (e) => {
-            if(e.target.classList.contains('btn')) return; // 버튼 누를 땐 시점 고정
-            isDragging = true;
-            previousMousePosition = {
-                x: e.touches[0].clientX,
-                y: e.touches[0].clientY
-            };
-        }, { passive: true });
-
-        window.addEventListener('touchmove', (e) => {
-            if (!isDragging) return;
-            const deltaMove = {
-                x: e.touches[0].clientX - previousMousePosition.x,
-                y: e.touches[0].clientY - previousMousePosition.y
-            };
-
-            cameraRotation.y -= deltaMove.x * 0.005;
-            cameraRotation.x -= deltaMove.y * 0.005;
-            cameraRotation.x = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, cameraRotation.x)); // 위아래 제한
-
-            camera.quaternion.setFromEuler(new THREE.Euler(cameraRotation.x, cameraRotation.y, 0, 'YXZ'));
-
-            previousMousePosition = {
-                x: e.touches[0].clientX,
-                y: e.touches[0].clientY
-            };
-        }, { passive: true });
-
-        window.addEventListener('touchend', () => { isDragging = false; });
-
-        // 7. UI 버튼 기능 작동 정의
-        const modeBtn = document.getElementById('btn-mode');
-        const actionBtn = document.getElementById('btn-action');
-        const indicator = document.getElementById('mode-indicator');
-
-        // 모드 변경 버튼 터치 (설치 <-> 부수기)
-        modeBtn.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            isBreakMode = !isBreakMode;
-            if (isBreakMode) {
-                indicator.innerText = "❌ 모드: 블록 부수기";
-                actionBtn.innerText = "💥 파괴";
-            } else {
-                indicator.innerText = "🛠️ 모드: 블록 설치하기";
-                actionBtn.innerText = "🔨 설치";
-            }
-        });
-
-        // 설치/파괴 액션 실행 버튼 터치
-        actionBtn.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            executeBlockAction();
-        });
-
-        // 화면 크기 조정 처리
-        window.addEventListener('resize', onWindowResize, false);
-    }
-
-    // 화면 정중앙의 크로스헤어가 가리키는 블록 감지 및 액션 처리
-    function executeBlockAction() {
-        const raycaster = new THREE.Raycaster();
-        // 화면 정중앙 좌표 (0,0) 설정
-        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+    // 화면 꽉 차게 캔버스 초기화 함수
+    function resizeCanvas() {
+        canvas.width = Math.min(window.innerWidth, 500);
+        canvas.height = window.innerHeight - document.getElementById("ui-top").offsetHeight - document.getElementById("control-panel").offsetHeight;
         
-        const intersects = raycaster.intersectObjects(blocks);
+        gridCols = Math.ceil(canvas.width / blockSize);
+        gridRows = Math.ceil(canvas.height / blockSize);
+        
+        drawWorld();
+    }
 
-        if (intersects.length > 0) {
-            const intersect = intersects[0];
+    // 기본 지형(바닥 레이어) 생성
+    function generateInitialTerrain() {
+        // 맨 밑에서 3개 줄은 기본 돌과 흙으로 깔아둠
+        for (let col = 0; col < 15; col++) {
+            worldMap[`${col},${8}`] = 1; // 잔디 바닥
+            worldMap[`${col},${9}`] = 2; // 돌 바닥
+            worldMap[`${col},${10}`] = 2;
+        }
+    }
 
-            if (isBreakMode) {
-                // 블록 부수기 모드
-                if (intersect.object.position.y === 0) return; // 기본 바닥은 안 부서지게 보호
-                scene.remove(intersect.object);
-                blocks = blocks.filter(b => b !== intersect.object);
-            } else {
-                // 블록 설치하기 모드 (바라보는 면의 방향 벡터를 이용해 옆에 생성)
-                const position = new THREE.Vector3()
-                    .copy(intersect.point)
-                    .add(intersect.face.normal)
-                    .floor()
-                    .addScalar(0.5); // 격자 중앙 정렬
+    // 맵 그리기 로직 (오류 예방 핵심)
+    function drawWorld() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // 설치하려는 자리에 이미 블록이 있는지 확인
-                const blockExists = blocks.some(b => b.position.distanceTo(position) < 0.1);
-                if (blockExists) return;
+        // 1. 모바일 눈 피로 방지 격자 가이드선 그리기
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+        ctx.lineWidth = 1;
+        for (let c = 0; c <= gridCols; c++) {
+            ctx.beginPath(); ctx.moveTo(c * blockSize, 0); ctx.lineTo(c * blockSize, canvas.height); ctx.stroke();
+        }
+        for (let r = 0; r <= gridRows; r++) {
+            ctx.beginPath(); ctx.moveTo(0, r * blockSize); ctx.lineTo(canvas.width, r * blockSize); ctx.stroke();
+        }
 
-                const geometry = new THREE.BoxGeometry(1, 1, 1);
-                // 설치하는 블록은 갈색 무늬로 다르게 지정
-                const material = new THREE.MeshLambertMaterial({ color: 0xd2b48c }); 
-                const newBlock = new THREE.Mesh(geometry, material);
+        // 2. 저장된 블록 맵 정보 렌더링
+        for (let key in worldMap) {
+            const [c, r] = key.split(",").map(Number);
+            const type = worldMap[key];
+            
+            if (type && blockColors[type]) {
+                // 블록 바디 그리기
+                ctx.fillStyle = blockColors[type];
+                ctx.fillRect(c * blockSize, r * blockSize, blockSize, blockSize);
                 
-                // 블록 좌표를 격자에 딱 맞게 보정 유도 (0.5 단위 맵 구조)
-                newBlock.position.set(
-                    Math.round(intersect.object.position.x + intersect.face.normal.x),
-                    Math.round(intersect.object.position.y + intersect.face.normal.y),
-                    Math.round(intersect.object.position.z + intersect.face.normal.z)
-                );
-
-                const edges = new THREE.EdgesGeometry(geometry);
-                const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x8b5a2b }));
-                newBlock.add(line);
-
-                scene.add(newBlock);
-                blocks.push(newBlock);
+                // 마인크래프트 특유의 블록 테두리 선 구현
+                ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(c * blockSize, r * blockSize, blockSize, blockSize);
             }
         }
     }
 
-    function onWindowResize() {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
+    // 터치 입력 좌표 판정 및 액션 작동
+    function handleTouch(clientX, clientY) {
+        const rect = canvas.getBoundingClientRect();
+        const touchX = clientX - rect.left;
+        const touchY = clientY - rect.top;
+
+        // 터치 좌표를 격자 인덱스(몇 번째 칸인지)로 정밀 변환
+        const col = Math.floor(touchX / blockSize);
+        const row = Math.floor(touchY / blockSize);
+        const key = `${col},${row}`;
+
+        if (isBreakMode) {
+            // 부수기 모드
+            delete worldMap[key];
+        } else {
+            // 설치 모드
+            worldMap[key] = currentBlockType;
+        }
+
+        drawWorld();
     }
 
-    // 매 프레임 화면을 다시 그리는 루프
-    function animate() {
-        requestAnimationFrame(animate);
-        renderer.render(scene, camera);
+    // 터치/클릭 이벤트 바인딩 (모바일 하이브리드)
+    canvas.addEventListener("touchstart", function(e) {
+        e.preventDefault();
+        if(e.touches.length > 0) {
+            handleTouch(e.touches[0].clientX, e.touches[0].clientY);
+        }
+    }, { passive: false });
+
+    canvas.addEventListener("mousedown", function(e) {
+        handleTouch(e.clientX, e.clientY);
+    });
+
+    // 상단 UI 및 모드 스위칭 시스템
+    function toggleMode() {
+        const btn = document.getElementById("btnMode");
+        const status = document.getElementById("status-mode");
+        isBreakMode = !isBreakMode;
+
+        if (isBreakMode) {
+            btn.innerText = "💥 파괴 모드";
+            btn.className = "btn-mode break";
+            status.innerText = "모드: ❌ 블록 파괴";
+        } else {
+            btn.innerText = "🛠️ 설치 모드";
+            btn.className = "btn-mode";
+            status.innerText = "모드: 🧱 블록 설치";
+        }
     }
+
+    // 설치할 블록 종류 교체 스위칭
+    function changeBlockType() {
+        currentBlockType = (currentBlockType % 4) + 1;
+        document.getElementById("status-block").innerText = `선택: ${blockNames[currentBlockType]}`;
+    }
+
+    // 실행 시작 제어
+    window.onload = function() {
+        generateInitialTerrain();
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+    };
 </script>
 
 </body>
