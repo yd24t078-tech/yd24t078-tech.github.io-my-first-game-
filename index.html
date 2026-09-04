@@ -1,1 +1,217 @@
-<!DOCTYPE html> <html lang="ko"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>2D 미니 액션 RPG</title> <style> body { margin: 0; background-color: #111; color: white; font-family: 'Malgun Gothic', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; } #gameUi { margin-bottom: 10px; font-size: 18px; font-weight: bold; background: rgba(0,0,0,0.6); padding: 10px 20px; border-radius: 20px; } canvas { background-color: #222; border: 4px solid #444; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.7); max-width: 100%; } .instructions { margin-top: 15px; color: #aaa; font-size: 14px; text-align: center; } </style> </head> <body> <div id="gameUi"> ⚔️ 레벨: <span id="lvl">1</span> | 🩸 체력: <span id="hp">100</span>/100 | 💰 점수: <span id="score">0</span> </div> <canvas id="gameCanvas" width="600" height="400"></canvas> <div class="instructions"> 🕹️ <b>조작법:</b> 화면(캔버스) 안을 마우스로 클릭하거나 터치하면 <b>그 방향으로 캐릭터가 이동하며 검을 휘두릅니다!</b><br> 몬스터를 격파하고 레벨을 올려보세요! </div> <script> const canvas = document.getElementById("gameCanvas"); const ctx = canvas.getContext("2d"); // 플레이어 설정 let player = { x: 300, y: 200, radius: 15, speed: 4, hp: 100, maxHp: 100, lvl: 1, score: 0, targetX: 300, targetY: 200, isAttacking: false, attackTimer: 0 }; // 몬스터 목록 let enemies = []; let lastSpawn = 0; let spawnInterval = 1500; // 1.5초마다 몬스터 생성 // 터치/클릭으로 이동 및 공격 타겟 지정 function setTarget(e) { const rect = canvas.getBoundingClientRect(); // 터치 이벤트와 마우스 이벤트 분기 처리 const clientX = e.touches ? e.touches[0].clientX : e.clientX; const clientY = e.touches ? e.touches[0].clientY : e.clientY; player.targetX = clientX - rect.left; player.targetY = clientY - rect.top; // 이동할 때 공격 모션 발동 player.isAttacking = true; player.attackTimer = 10; } canvas.addEventListener("mousedown", setTarget); canvas.addEventListener("touchstart", function(e) { e.preventDefault(); // 태블릿 스크롤 방지 setTarget(e); }, { passive: false }); // UI 업데이트 function updateUi() { document.getElementById("lvl").innerText = player.lvl; document.getElementById("hp").innerText = player.hp; document.getElementById("score").innerText = player.score; }// 몬스터 생성 function spawnEnemy() { let x, y; // 화면 외곽에서 생성 if (Math.random() < 0.5) { x = Math.random() < 0.5 ? -20 : canvas.width + 20; y = Math.random() * canvas.height; } else { x = Math.random() * canvas.width; y = Math.random() < 0.5 ? -20 : canvas.height + 20; } enemies.push({ x: x, y: y, radius: 12, speed: 1 + (player.lvl * 0.2), // 레벨이 오를수록 빨라짐 color: `hsl(${Math.random() * 360}, 70%, 50%)` }); } // 게임 루프 function gameLoop(timestamp) { // 1. 배경 청소 및 바닥 격자 그리기 ctx.fillStyle = "#2c3e50"; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.strokeStyle = "#34495e"; ctx.lineWidth = 1; for(let i=0; i<canvas.width; i+=40) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke(); } for(let j=0; j<canvas.height; j+=40) { ctx.beginPath(); ctx.moveTo(0,j); ctx.lineTo(canvas.width,j); ctx.stroke(); } if (player.hp > 0) { // 2. 플레이어 이동 로직 let dx = player.targetX - player.x; let dy = player.targetY - player.y; let dist = Math.sqrt(dx * dx + dy * dy); if (dist > 5) { player.x += (dx / dist) * player.speed; player.y += (dy / dist) * player.speed; } // 3. 몬스터 생성 관리 if (timestamp - lastSpawn > spawnInterval) { spawnEnemy(); lastSpawn = timestamp; } // 4. 플레이어 그리기 (영웅 바디) ctx.beginPath(); ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2); ctx.fillStyle = "#3498db"; ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke(); // 공격 애니메이션 (검 휘두르기 효과) if (player.isAttacking && player.attackTimer > 0) { ctx.beginPath(); ctx.arc(player.x, player.y, player.radius + 20, 0, Math.PI * 2); ctx.strokeStyle = "rgba(255, 234, 0, 0.6)"; ctx.lineWidth = 6; ctx.stroke(); player.attackTimer--; if (player.attackTimer <= 0) player.isAttacking = false; } // 5. 몬스터 로직 처리 for (let i = enemies.length - 1; i >= 0; i--) { let e = enemies[i]; // 플레이어를 향해 추적 이동 let edx = player.x - e.x; let edy = player.y - e.y; let edist = Math.sqrt(edx * edx + edy * edy); e.x += (edx / edist) * e.speed; e.y += (edy / edist) * e.speed; // 몬스터 그리기 ctx.beginPath(); ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2); ctx.fillStyle = e.color; ctx.fill(); // 충돌 검사 (공격 범위 내에 있는지) if (player.isAttacking && edist < player.radius + 25) { // 사냥 성공 enemies.splice(i, 1); player.score += 10; if (player.score % 50 === 0) { player.lvl++; player.speed += 0.5; } continue; } // 플레이어 피격 검사 if (edist < player.radius + e.radius) { player.hp -= 1; // 초당 다단히트 데미지 if (player.hp <= 0) player.hp = 0; } } updateUi(); } else { // 게임 오버 화면 ctx.fillStyle = "rgba(0,0,0,0.8)"; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = "red"; ctx.font = "bold 40px Malgun Gothic"; ctx.fillText("GAME OVER", canvas.width/2 - 120, canvas.height/2); ctx.fillStyle = "white"; ctx.font = "20px Malgun Gothic"; ctx.fillText("새로고침(F5)을 하여 다시 도전하세요!", canvas.width/2 - 160, canvas.height/2 + 50); } requestAnimationFrame(gameLoop); } // 게임 시작 requestAnimationFrame(gameLoop); </script> </body> </html>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>태블릿 최적화 액션 RPG</title>
+    <style>
+        * { box-sizing: border-box; -webkit-touch-callout: none; -webkit-user-select: none; }
+        body {
+            margin: 0; padding: 15px;
+            background-color: #1a1a24;
+            color: #ffffff;
+            font-family: 'Malgun Gothic', sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh;
+        }
+        .game-screen {
+            width: 100%; max-width: 600px;
+            background: #252538;
+            border: 3px solid #4e4e70; border-radius: 15px;
+            padding: 20px; text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+        .battle-arena {
+            display: flex; justify-content: space-around; align-items: center;
+            background: #14141f; height: 180px; border-radius: 10px; margin: 15px 0; padding: 10px;
+        }
+        .character-box { width: 45%; text-align: center; }
+        .avatar { font-size: 50px; margin-bottom: 5px; animation: bounce 1s infinite alternate; }
+        @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-10px); } }
+        .hp-bar-container { background: #444; width: 100%; height: 12px; border-radius: 6px; overflow: hidden; margin-top: 5px; }
+        .hp-bar { background: #ff4757; height: 100%; width: 100%; transition: width 0.3s ease; }
+        .enemy-hp { background: #ffa502; }
+        .log-display {
+            background: #0f0f14; border-radius: 8px; height: 100px; padding: 10px;
+            font-size: 14px; color: #2ed573; text-align: left; overflow-y: auto; margin-bottom: 15px;
+        }
+        .control-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        button {
+            background: #3b3b54; border: 2px solid #5d5d81; color: white;
+            padding: 15px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer;
+            outline: none; -webkit-tap-highlight-color: transparent;
+        }
+        button:active { background: #5d5d81; }
+        .btn-attack { background: #ff4757; border-color: #ff6b81; }
+        .btn-attack:active { background: #ff6b81; }
+    </style>
+</head>
+<body>
+
+<div class="game-screen">
+    <h3 style="margin-top:0; color:#eccc68;">⚔️ 태블릿 터치 비주얼 RPG 🛡️</h3>
+    
+    <div style="font-size: 14px; color: #a4b0be;">
+        레벨: <span id="txtLvl">1</span> | 공격력: <span id="txtAtk">12</span> | 골드: <span id="txtGold">0</span>G
+    </div>
+
+    <!-- 배틀 아레나 (비주얼 화면) -->
+    <div class="battle-arena">
+        <div class="character-box">
+            <div class="avatar">🧙‍♂️</div>
+            <div style="font-size:12px;">플레이어 (Lv.<span id="pLvl">1</span>)</div>
+            <div class="hp-bar-container"><div id="pHpBar" class="hp-bar"></div></div>
+        </div>
+        <div style="font-size: 24px; color:#ff4757; font-weight:bold;">VS</div>
+        <div class="character-box">
+            <div id="mAvatar" class="avatar">🦎</div>
+            <div id="mName" style="font-size:12px; font-weight:bold;">야생 슬라임</div>
+            <div class="hp-bar-container"><div id="mHpBar" class="hp-bar enemy-hp"></div></div>
+        </div>
+    </div>
+
+    <!-- 배틀 로그 -->
+    <div id="logBox" class="log-display">[시스템] 모험을 시작할 준비가 되었습니다.</div>
+
+    <!-- 터치 패드 컨트롤 -->
+    <div class="control-panel">
+        <button class="btn-attack" onclick="doAction('attack')">⚔️ 일반 공격</button>
+        <button onclick="doAction('skill')">🔥 마법 스킬</button>
+        <button onclick="doAction('heal')">❤️ 휴식/치료 (10G)</button>
+        <button onclick="doAction('upgrade')">🛒 장비 강화 (40G)</button>
+    </div>
+</div>
+
+<script>
+    // 모든 화면 요소가 준비된 후 실행되도록 보장
+    window.onload = function() {
+        let p = { lvl: 1, hp: 100, maxHp: 100, atk: 12, gold: 0, score: 0 };
+        let m = { name: "초록 슬라임", avatar: "🟢", hp: 30, maxHp: 30, atk: 5, gold: 15 };
+
+        const monsterDatabase = [
+            { name: "초록 슬라임", avatar: "🟢", hp: 30, atk: 5, gold: 15 },
+            { name: "화난 고블린", avatar: "👺", hp: 55, atk: 10, gold: 30 },
+            { name: "심해 크라켄", avatar: "🦑", hp: 90, atk: 18, gold: 55 },
+            { name: "지옥 화염룡", avatar: "🐉", hp: 220, atk: 28, gold: 150 }
+        ];
+
+        const logBox = document.getElementById("logBox");
+
+        function addLog(msg, color="#2ed573") {
+            logBox.innerHTML += `<br><span style="color:${color};">${msg}</span>`;
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        function refreshUi() {
+            document.getElementById("txtLvl").innerText = p.lvl;
+            document.getElementById("pLvl").innerText = p.lvl;
+            document.getElementById("txtAtk").innerText = p.atk;
+            document.getElementById("txtGold").innerText = p.gold;
+            
+            // 체력 바 비율 업데이트
+            document.getElementById("pHpBar").style.width = (p.hp / p.maxHp * 100) + "%";
+            document.getElementById("mHpBar").style.width = (m.hp / m.maxHp * 100) + "%";
+
+            // 몬스터 정보 출력
+            document.getElementById("mName").innerText = m.name;
+            document.getElementById("mAvatar").innerText = m.avatar;
+        }
+
+        function nextMonster() {
+            let idx = Math.floor(Math.random() * 3);
+            if (p.lvl >= 4 && Math.random() > 0.5) idx = 3; // 레벨 높으면 용 등장
+            
+            let template = monsterDatabase[idx];
+            m.name = template.name;
+            m.avatar = template.avatar;
+            m.maxHp = template.hp + (p.lvl * 5);
+            m.hp = m.maxHp;
+            m.atk = template.atk + (p.lvl * 2);
+            m.gold = template.gold;
+
+            addLog(`📢 새로운 적 [${m.name}]이(가) 나타났습니다!`, "#eccc68");
+        }
+
+        window.doAction = function(type) {
+            if (p.hp <= 0 && type !== 'heal') {
+                addLog("💀 행동 불능 상태입니다! 치료를 먼저 하세요.", "#ff4757");
+                return;
+            }
+
+            if (type === 'attack') {
+                let damage = p.atk + Math.floor(Math.random() * 5);
+                m.hp -= damage;
+                addLog(`⚔️ 당신의 공격! [${m.name}]에게 ${damage} 데미지!`);
+                enemyTurn();
+            } 
+            else if (type === 'skill') {
+                let damage = Math.floor(p.atk * 1.6);
+                m.hp -= damage;
+                addLog(`🔥 마법 작렬! [${m.name}]에게 ${damage}의 광역 데미지!`, "#ff7f50");
+                enemyTurn();
+            } 
+            else if (type === 'heal') {
+                if (p.gold >= 10 || p.hp <= 0) {
+                    if (p.hp <= 0) {
+                        p.hp = 30; // 돈 없어도 최소 부활 구제
+                        addLog("❤️ 무료 응급 처치로 체력을 30 회복했습니다.", "#70a1ff");
+                    } else {
+                        p.gold -= 10;
+                        p.hp = p.maxHp;
+                        addLog("💤 여관에서 휴식하여 모든 체력을 회복했습니다! (-10G)", "#70a1ff");
+                    }
+                } else {
+                    addLog("❌ 골드가 부족하여 휴식할 수 없습니다.", "#ff4757");
+                }
+            } 
+            else if (type === 'upgrade') {
+                if (p.gold >= 40) {
+                    p.gold -= 40;
+                    p.atk += 6;
+                    addLog("🛒 무기 강화 성공! 공격력이 +6 증가합니다.", "#ffa502");
+                } else {
+                    addLog("❌ 골드가 부족합니다. (필요: 40G)", "#ff4757");
+                }
+            }
+
+            // 몬스터 처치 판정
+            if (m.hp <= 0) {
+                m.hp = 0;
+                p.gold += m.gold;
+                addLog(`🏆 승리! [${m.name}]을 무찌르고 ${m.gold}G를 얻었습니다!`, "#2ed573");
+                
+                // 레벨업 시스템
+                if (Math.random() > 0.4) {
+                    p.lvl++;
+                    p.maxHp += 15;
+                    p.hp = p.maxHp;
+                    p.atk += 3;
+                    addLog(`✨ LEVEL UP! 레벨이 ${p.lvl}(으)로 올랐습니다.`, "#eccc68");
+                }
+                
+                nextMonster();
+            }
+
+            refreshUi();
+        }
+
+        function enemyTurn() {
+            if (m.hp <= 0) return;
+
+            let mDamage = m.atk + Math.floor(Math.random() * 3);
+            p.hp -= mDamage;
+            addLog(`🩸 [${m.name}]의 반격! ${mDamage}의 데미지를 입었습니다.`, "#ff4757");
+
+            if (p.hp <= 0) {
+                p.hp = 0;
+                addLog("💀 쓰러졌습니다! 하단의 휴식 버튼을 눌러 치료(부활)하세요.", "#ff6b81");
+            }
+        }
+
+        // 초기화 가동
+        refreshUi();
+    };
+</script>
+
+</body>
+</html>
