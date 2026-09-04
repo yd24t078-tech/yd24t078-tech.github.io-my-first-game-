@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>숫자 맞추기 게임 (Up & Down)</title>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', sans-serif;
+            text-align: center;
+            background-color: #f0f2f5;
+            padding: 50px;
+        }
+        .game-container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            display: inline-block;
+        }
+        input [type="number"] {
+            padding: 10px;
+            font-size: 16px;
+            width: 80px;
+            text-align: center;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="game-container">
+    <h1>🔢 숫자 맞추기 게임</h1>
+    <p>1부터 100 사이의 숫자를 맞춰보세요!</p>
+    
+    <input type="number" id="guessInput" min="1" max="100" placeholder="숫자 입력">
+    <button onclick="checkGuess()">정답 확인</button>
+
+    <div class="result" id="resultMessage"></div>
+    <div class="result" id="turnMessage">시도 횟수: 0</div>
+</div>
+
+<script>
+    // 1~100 사이의 랜덤 숫자 생성
+    const targetNumber = Math.floor(Math.random() * 100) + 1;
+    let attempts = 0;
+
+    function checkGuess() {
+        const userInput = document.getElementById("guessInput").value;
+        const resultMessage = document.getElementById("resultMessage");
+        const turnMessage = document.getElementById("turnMessage");
+
+        // 입력값 예외 처리
+        if (userInput === "" || userInput < 1 || userInput > 100) {
+            resultMessage.innerText = "⚠️ 1부터 100 사이의 올바른 숫자를 입력하세요.";
+            resultMessage.style.color = "red";
+            return;
+        }
+
+        attempts++;
+        const guess = parseInt(userInput);
+
+        // 숫자 비교
+        if (guess === targetNumber) {
+            resultMessage.innerText = `🎉 축하합니다! 정답입니다! (${attempts}번 만에 맞춤)`;
+            resultMessage.style.color = "green";
+        } else if (guess > targetNumber) {
+            resultMessage.innerText = "📉 DOWN! 더 낮은 숫자입니다.";
+            resultMessage.style.color = "blue";
+        } else {
+            resultMessage.innerText = "📈 UP! 더 높은 숫자입니다.";
+            resultMessage.style.color = "orange";
+        }
+
+        turnMessage.innerText = `시도 횟수: ${attempts}`;
+    }
+</script>
+
+</body>
+</html>
